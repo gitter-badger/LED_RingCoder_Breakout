@@ -48,6 +48,7 @@ SW (Encoder push button)         7
 */
 
 #include <Bounce2.h>
+#include <EEPROM.h>
 
 // The CONTINUOUS define will adjust how the encoderPosition is
 // incremented and decremented. If CONTINUOUS is defined, the
@@ -61,24 +62,27 @@ SW (Encoder push button)         7
 // will fill up as you rotate the encoder.These depend on the
 // encoderPosition variable being an unsigned 8-bit type.
 // These will only be used if CONTINUOUS is NOT defined.
-#define ROTATION_SPEED 3  // MIN: 0, MAX: 5, 3 is a good value
+#define ROTATION_SPEED 4  // MIN: 0, MAX: 5, 3 is a good value
 #define ENCODER_POSITION_MAX  (256 >> (ROTATION_SPEED - 1)) - 1
 #define ENCODER_POSITION_MIN  0  // Don't go below 0
 
+#define EEPROM_MAX 2047 //teensy 3.1
+#define LED_COUNT 16
+
 // Pin definitions - Encoder:
-const int aPin = 3;  // Encoder A pin, D3 is external interrupt 1
-const int bPin = 2;  // Encoder B pin, D2 is external interrupt 0
-const int redPin = 5;  // Encoder's red LED - D5 is PWM enabled
-const int bluPin = 6;  // Encoder's blue LED- D6 is PWM enabled
-const int grnPin = 9;  // Encoder's green LED - D9 is PWM enabled
-const int swhPin = 7;  // Encoder's switch pin
+const int bPin = 0;  // Encoder B pin, D2 is external interrupt 0
+const int aPin = 1;  // Encoder A pin, D3 is external interrupt 1
+const int redPin = 3;  // Encoder's red LED - D5 is PWM enabled
+const int bluPin = 4;  // Encoder's blue LED- D6 is PWM enabled
+const int grnPin = 5;  // Encoder's green LED - D9 is PWM enabled
+const int swhPin = 2;  // Encoder's switch pin
 
 // Pin definitions - Shift registers:
-const int enPin = 13;  // Shift registers' Output Enable pin
-const int latchPin = 12;  // Shift registers' rclk pin
-const int clkPin = 11;  // Shift registers' srclk pin
-const int clrPin = 10;  // shift registers' srclr pin
-const int datPin = 8;  // shift registers' SER pin
+const int datPin = 6;  // shift registers' SER pin
+const int clrPin = 7;  // shift registers' srclr pin
+const int clkPin = 8;  // Shift registers' srclk pin
+const int latchPin = 9;  // Shift registers' rclk pin
+const int enPin = 10;  // Shift registers' Output Enable pin
 
 // The encoderPosition variable stores the position of the encoder.
 // It's either incremented or decremented in the encoder's
@@ -103,6 +107,10 @@ byte ledValue[3] = {255, 255, 255};
 byte ledPins[3] = {redPin, bluPin, grnPin};
 
 Bounce pushButton = Bounce();
+
+inline int positive_modulo(int i, int n) {
+  return (i % n + n) % n;
+}
 
 void setEncoderPins() {
   // Setup encoder pins, they should both be set as inputs
@@ -154,7 +162,36 @@ void setShiftRegisterPins() {
 }
 
 
+void blink() {
+  setShift(0x0000);
+  delay(250);
+  setShift(0xFFFF);
+  delay(250);
+  setShift(0x0000);
+}
+
+void spin(boolean reverse) {
+  for(unsigned int i = 0; i < LED_COUNT; i++) {
+    if (reverse) {
+      setShift(32768 >> i); //32768 is the highest bit (msb) one and all others 0
+    } else {
+      setShift(1 << i);
+    }
+    delay(1000/LED_COUNT);
+  }
+  setShift(0x0000);
+}
+
+void spin() {
+  spin(false);
+}
+
+void reverse_spin() {
+  spin(true);
+}
+
 void setup() {
+  Serial.begin(9600);
   setEncoderPins();
   setInterruptPins();
   setPushButtonPins();
@@ -162,6 +199,9 @@ void setup() {
   setShiftRegisterPins();
 
   setShift(0x0000);
+
+  spin();
+  reverse_spin();
 
   // Now we can enable interrupts and start the code.
   interrupts();
@@ -175,17 +215,24 @@ void loop() {
   if (stateChanged && state == HIGH) {
     // In here we'll increment ledCount, but we have to make sure
     // it stays within our bounds (0-3).
-    ledCount = ledCount++ % (NONE + 1);
+    ledCount = ++ledCount % (NONE + 1);
+
+    setShift(0x0000); //Reset encoder position on each
+    encoderPosition = 0;
+
+    if (ledCount == NONE) {
+      checkValues();
+    }
   }
 
   // Every time through the loop, the LED bar graph should be
   // updated. There are two options here, you can use ledRingFiller()
   // which will fill up the bar graph. Or you can use ledRingFollower()
   // which will illuminate only one bar graph LED at a time.
-  ledRingFiller(ROTATION_SPEED);  // Update the Bar graph LED
+  //ledRingFiller(ROTATION_SPEED);  // Update the Bar graph LED
   // Uncomment the below line, and comment out the one above
   // if you want to activate the ledRingFollower();
-  //ledRingFollower(ROTATION_SPEED);  // Update the bar graph LED
+  ledRingFollower(ROTATION_SPEED);  // Update the bar graph LED
 
   // Every time through loop, the current active LED will be updated
   // If the current LED is NONE, then all LEDs will remain the same
@@ -197,6 +244,22 @@ void loop() {
     ledValue[ledCount] = 255 - (encoderPosition * ROTATION_SPEED);
     // Now we analogWrite the calculated value to the active LED
     analogWrite(ledPins[ledCount], ledValue[ledCount]);
+  }
+}
+
+void checkValues() {
+  int r = EEPROM.read(RED);
+  int g = EEPROM.read(GREEN);
+  int b = EEPROM.read(BLUE);
+
+  if (r == ledValue[RED] &&
+      g == ledValue[GREEN] &&
+      b == ledValue[BLUE]) {
+    Keyboard.print("Secret Word");
+  } else {
+    blink();
+    blink();
+    blink();
   }
 }
 
@@ -292,7 +355,7 @@ void shiftOut16(uint16_t data) {
 // This function is called every time either of the two encoder
 // pins (A and B) either rise or fall.
 //   This code will determine the directino of rotation, and
-// update the global encoderPostion variable accordingly.
+// update the global encoderPosition variable accordingly.
 //   This code is adapted from Rotary Encoder code by Oleg.
 void readEncoder() {
   noInterrupts();  // don't want our interrupt to be interrupted
@@ -330,12 +393,6 @@ void readEncoder() {
   // movement. We'll either add 1, -1 or 0 here.
   encoderPosition += enc_states[oldEncoderState];
 
-  // This next bit will only happen if CONTINUOUS is not defined.
-  // If CONTINUOUS is defined, encoderPosition will roll over from
-  // -32768 (assuming it's a signed int) to to 32767 if decremented,
-  // or 32767 to -32768 if incremented.
-  //   That can be useful for some applications. In this code, we
-  // want the encoder value to stop at 255 and 0 (makes analog writing easier)
   #ifndef CONTINUOUS
     // If encoderPosition is greater than the MAX, just set it
     // equal to the MAX
@@ -344,6 +401,12 @@ void readEncoder() {
     // equal to the MIN.
     encoderPosition = max(ENCODER_POSITION_MIN, encoderPosition);
   #endif
+
+  #ifdef CONTINUOUS
+    encoderPosition = positive_modulo(encoderPosition, ENCODER_POSITION_MAX + 1);
+  #endif
+
+  Serial.println("Encoder prosition: " + String(encoderPosition));
 
   interrupts();  // re-enable interrupts before we leave
 }
