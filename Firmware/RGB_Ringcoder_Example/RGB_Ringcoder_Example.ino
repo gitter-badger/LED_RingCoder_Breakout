@@ -9,6 +9,7 @@
 #define LED_COUNT 16
 #define ENCODER_STEP 4 //When you feel a single turn, its actually 4 signals
 #define RANGE 32
+#define ENCODER_MAX RANGE - 1
 
 // Pin definitions - Encoder:
 const int bPin = 0;  // Encoder B pin, D2 is external interrupt 0
@@ -138,7 +139,7 @@ void loop() {
     ledRingFollower();  // Update the bar graph LED
 
     if (ledCount != NONE) {  // Only update the LED if it's RED, GREEN or BLUE
-      ledValue[ledCount] = 255 - (encoderPosition % 256);
+      ledValue[ledCount] = 255 - (255 * encoderPosition / ENCODER_MAX); //Range - 1 since encoder is actually [0,RANGE-1] for values
       analogWrite(ledPins[ledCount], ledValue[ledCount]);
     }
   }
