@@ -8,8 +8,11 @@
 #define EEPROM_MAX 2047 //teensy 3.1
 #define LED_COUNT 16
 #define ENCODER_STEP 4 //When you feel a single turn, its actually 4 signals
-#define RANGE 32
-#define ENCODER_MAX RANGE - 1
+#define ENCODER_RANGE 32
+#define ENCODER_MAX (ENCODER_RANGE - 1)
+
+#define KNOB_LED_RANGE 256
+#define KNOB_LED_MAX (KNOB_LED_RANGE - 1)
 
 // Pin definitions - Encoder:
 const int bPin = 0;  // Encoder B pin, D2 is external interrupt 0
@@ -30,7 +33,7 @@ long encoderPosition;
 
 enum ledCounter {RED = 0, BLUE = 1, GREEN = 2, NONE = 3};
 byte ledCount = RED;
-byte ledValue[3] = {255, 255, 255};
+byte ledValue[3] = {KNOB_LED_MAX, KNOB_LED_MAX, KNOB_LED_MAX};
 byte ledPins[3] = {redPin, bluPin, grnPin};
 
 Encoder myEnc(bPin, aPin);
@@ -100,6 +103,15 @@ void reverse_spin() {
   spin(true);
 }
 
+//Read/Write methods to adjust for hardware only settling on multiples of 4
+signed int readEncoder() {
+  return (myEnc.read() / ENCODER_STEP);
+}
+
+void writeEncoder(signed int newPosition) {
+  myEnc.write(newPosition * ENCODER_STEP);
+}
+
 void setup() {
   Serial.begin(9600);
   setPushButtonPins();
@@ -120,27 +132,36 @@ void loop() {
   if (stateChanged && state == HIGH) {
     ledCount = ++ledCount % (NONE + 1);
 
-    setShift(0x0000); //Reset encoder position on each
-    myEnc.write(0);
-
     if (ledCount == NONE) {
+      setShift(0x0000);
       checkValues();
+    } else {
+      //set to the encoder value from the last time we adjusted that LED
+      writeEncoder(
+        ledValue[ledCount]  / KNOB_LED_RANGE / ENCODER_RANGE
+      );
+      Serial.print("loading former value ");
+      Serial.print(myEnc.read());
+      Serial.print(" From stored LED value ");
+      Serial.print(ledValue[ledCount]);
+      Serial.println("");
     }
 
     Serial.println("ledCount: " + String(ledCount));
   }
 
   //Read position after stateChanged conditional to allow for myEnc.write
-  newPosition = positive_modulo(myEnc.read() / ENCODER_STEP, RANGE);
+  newPosition = positive_modulo(readEncoder(), ENCODER_RANGE);
 
-  if (newPosition != encoderPosition) {
+  if (newPosition != encoderPosition || stateChanged) {
     encoderPosition = newPosition;
     Serial.println("Encoder position: " + String(encoderPosition));
-    ledRingFollower();  // Update the bar graph LED
 
     if (ledCount != NONE) {  // Only update the LED if it's RED, GREEN or BLUE
-      ledValue[ledCount] = 255 - (255 * encoderPosition / ENCODER_MAX); //Range - 1 since encoder is actually [0,RANGE-1] for values
-      analogWrite(ledPins[ledCount], ledValue[ledCount]);
+      ledRingFollower();  // Update the bar graph LED
+      ledValue[ledCount] = KNOB_LED_MAX * encoderPosition / ENCODER_MAX;
+      analogWrite(ledPins[ledCount], KNOB_LED_MAX - ledValue[ledCount]);//LEDs use 255-0 range
+      Serial.println("Setting LED to " + String(ledValue[ledCount]));
     }
   }
 }
@@ -156,11 +177,11 @@ void checkValues() {
     Keyboard.print("Secret Word");
   } else {
     Serial.print("(");
-    Serial.print(ledValue[RED], HEX);
+    Serial.print(ledValue[RED]);
     Serial.print(",");
-    Serial.print(ledValue[GREEN], HEX);
+    Serial.print(ledValue[GREEN]);
     Serial.print(",");
-    Serial.print(ledValue[BLUE], HEX);
+    Serial.print(ledValue[BLUE]);
     Serial.print(")");
     Serial.println("");
     blink();
@@ -179,8 +200,8 @@ unsigned int calculateShift(boolean fill) {
   unsigned int ledShift = 0;
   unsigned int ledOutput = 0;
 
-  //Convert from encoderPosition to 16 bit value
-  ledShift = encoderPosition / (RANGE / LED_COUNT);
+  //Convert from encoderPosition to bit string
+  ledShift = encoderPosition / (ENCODER_RANGE / LED_COUNT);
 
   if (fill) {
     for (int i = 0; i < ledShift; i++){
@@ -200,7 +221,6 @@ void ledRingFiller() {
 
 void ledRingFollower() {
   unsigned int ledOutput = calculateShift(false);
-
   setShift(ledOutput);
 }
 
