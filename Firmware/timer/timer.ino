@@ -61,6 +61,8 @@ void setLedPins() {
   analogWrite(redPin, ledValue[RED]);  // Red off
   pinMode(bluPin, OUTPUT);
   analogWrite(bluPin, ledValue[BLUE]);  // Blue off
+  pinMode(grnPin, OUTPUT);
+  analogWrite(grnPin, ledValue[GREEN]);  // Blue off
 }
 
 void setShiftRegisterPins() {
@@ -138,22 +140,27 @@ void setup() {
   expirationAnimation();
 }
 
-void expirationAnimation() {
+void setKnobRgb(int r, int g, int b) {
+  int safe_r = positive_modulo(r, KNOB_LED_RANGE);
+  int safe_g = positive_modulo(g, KNOB_LED_RANGE);
+  int safe_b = positive_modulo(b, KNOB_LED_RANGE);
+  //LEDs use 255-0 range
 
+  analogWrite(ledPins[RED], KNOB_LED_MAX - safe_r);
+  analogWrite(ledPins[GREEN], KNOB_LED_MAX - safe_g);
+  analogWrite(ledPins[BLUE], KNOB_LED_MAX - safe_b);
+}
+
+void expirationAnimation() {
   Serial.println("Times up!");
 
-  analogWrite(ledPins[RED], 0);//LEDs use 255-0 range
+  setKnobRgb(255, 0, 0);
   delay(333);
-  analogWrite(ledPins[RED], KNOB_LED_MAX);//LEDs use 255-0 range
-
-  analogWrite(ledPins[GREEN], 0);//LEDs use 255-0 range
+  setKnobRgb(0, 255, 0);
   delay(333);
-  analogWrite(ledPins[GREEN], KNOB_LED_MAX);//LEDs use 255-0 range
-
-  analogWrite(ledPins[BLUE], 0);//LEDs use 255-0 range
+  setKnobRgb(0, 0, 255);
   delay(333);
-  analogWrite(ledPins[BLUE], KNOB_LED_MAX);//LEDs use 255-0 range
-
+  setKnobRgb(255, 255, 255);
 }
 
 int secondsRemaining = 0;
