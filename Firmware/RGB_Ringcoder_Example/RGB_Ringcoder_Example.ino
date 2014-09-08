@@ -58,6 +58,8 @@ void setLedPins() {
   analogWrite(redPin, ledValue[RED]);  // Red off
   pinMode(bluPin, OUTPUT);
   analogWrite(bluPin, ledValue[BLUE]);  // Blue off
+  pinMode(grnPin, OUTPUT);
+  analogWrite(grnPin, ledValue[GREEN]);  // Blue off
 }
 
 void setShiftRegisterPins() {
