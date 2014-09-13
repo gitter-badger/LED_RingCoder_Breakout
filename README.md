@@ -1,3 +1,4 @@
+[![Gitter](https://badges.gitter.im/Join Chat.svg)](https://gitter.im/bettse/LED_RingCoder_Breakout?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 LED RingCoder Breakout - RGB
 ============================
 
